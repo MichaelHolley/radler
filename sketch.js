@@ -29,11 +29,11 @@ function preload() {
 }
 
 function setup() {
-  createCanvas(640, 480);
+  createCanvas(960, 720);
 
   // Create the video and hide it
   video = createCapture(VIDEO);
-  video.size(640, 480);
+  video.size(960, 720);
   video.hide();
 
   // Start detecting poses in the webcam video
@@ -50,6 +50,50 @@ function setup() {
 function toggleSide() {
   currentSide = currentSide === "left" ? "right" : "left";
   console.log("Current side:", currentSide);
+}
+
+// Helper function to calculate angle between three points (p1-p2-p3)
+function angleBetweenThreePoints(p1, p2, p3) {
+  const v1 = p5.Vector.sub(createVector(p1.x, p1.y), createVector(p2.x, p2.y));
+  const v2 = p5.Vector.sub(createVector(p3.x, p3.y), createVector(p2.x, p2.y));
+  let angle = v1.angleBetween(v2);
+  angle = degrees(angle); // Convert to degrees
+  return angle;
+}
+
+// Helper function to draw an arc for the angle
+function drawAngleArc(p1, p2, p3, angle) {
+  let v1 = p5.Vector.sub(createVector(p1.x, p1.y), createVector(p2.x, p2.y));
+  let v2 = p5.Vector.sub(createVector(p3.x, p3.y), createVector(p2.x, p2.y));
+
+  let startAngle = v1.heading();
+  let endAngle = v2.heading();
+
+  // Determine if the arc should be drawn clockwise or counter-clockwise
+  // based on the cross product of v1 and v2.
+  // A positive z-component means v2 is counter-clockwise from v1.
+  // A negative z-component means v2 is clockwise from v1.
+  let crossProductZ = v1.x * v2.y - v1.y * v2.x;
+
+  push();
+  noFill();
+  stroke(255, 255, 255); // White color for angle arc
+  strokeWeight(2);
+
+  if (crossProductZ < 0) {
+    // v2 is clockwise from v1
+    arc(p2.x, p2.y, 50, 50, endAngle, startAngle); // Swap to draw clockwise
+  } else {
+    // v2 is counter-clockwise from v1
+    arc(p2.x, p2.y, 50, 50, startAngle, endAngle);
+  }
+  pop();
+
+  // Display the angle value
+  fill(255, 255, 255); // White color for text
+  noStroke();
+  textSize(16);
+  text(nf(angle, 0, 1) + "°", p2.x + 30, p2.y);
 }
 
 function draw() {
@@ -112,6 +156,83 @@ function draw() {
       fill(0, 255, 0); // Green color for head
       noStroke();
       circle(noseKeypoint.x, noseKeypoint.y, 15); // Slightly larger circle for head
+    }
+
+    // --- Draw Angles ---
+    const getKp = (name) => pose.keypoints.find((kp) => kp.name === name);
+
+    // Elbow (inside): shoulder - elbow - wrist
+    let shoulderKp = getKp(`${currentSide}_shoulder`);
+    let elbowKp = getKp(`${currentSide}_elbow`);
+    let wristKp = getKp(`${currentSide}_wrist`);
+
+    if (
+      shoulderKp &&
+      elbowKp &&
+      wristKp &&
+      shoulderKp.confidence > 0.1 &&
+      elbowKp.confidence > 0.1 &&
+      wristKp.confidence > 0.1 &&
+      sideKeypoints[currentSide].includes(shoulderKp.name) &&
+      sideKeypoints[currentSide].includes(elbowKp.name) &&
+      sideKeypoints[currentSide].includes(wristKp.name)
+    ) {
+      let angle = angleBetweenThreePoints(shoulderKp, elbowKp, wristKp);
+      drawAngleArc(shoulderKp, elbowKp, wristKp, angle);
+    }
+
+    // Knee (back): hip - knee - ankle
+    let hipKp = getKp(`${currentSide}_hip`);
+    let kneeKp = getKp(`${currentSide}_knee`);
+    let ankleKp = getKp(`${currentSide}_ankle`);
+
+    if (
+      hipKp &&
+      kneeKp &&
+      ankleKp &&
+      hipKp.confidence > 0.1 &&
+      kneeKp.confidence > 0.1 &&
+      ankleKp.confidence > 0.1 &&
+      sideKeypoints[currentSide].includes(hipKp.name) &&
+      sideKeypoints[currentSide].includes(kneeKp.name) &&
+      sideKeypoints[currentSide].includes(ankleKp.name)
+    ) {
+      let angle = angleBetweenThreePoints(hipKp, kneeKp, ankleKp);
+      drawAngleArc(hipKp, kneeKp, ankleKp, angle);
+    }
+
+    // Hip (front): shoulder - hip - knee
+    // This assumes the angle at the hip formed by shoulder, hip, and knee
+    if (
+      shoulderKp &&
+      hipKp &&
+      kneeKp &&
+      shoulderKp.confidence > 0.1 &&
+      hipKp.confidence > 0.1 &&
+      kneeKp.confidence > 0.1 &&
+      sideKeypoints[currentSide].includes(shoulderKp.name) &&
+      sideKeypoints[currentSide].includes(hipKp.name) &&
+      sideKeypoints[currentSide].includes(kneeKp.name)
+    ) {
+      let angle = angleBetweenThreePoints(shoulderKp, hipKp, kneeKp);
+      drawAngleArc(shoulderKp, hipKp, kneeKp, angle);
+    }
+
+    // Armpit (inside): hip - shoulder - elbow
+    // This measures the angle between the torso and the upper arm
+    if (
+      hipKp &&
+      shoulderKp &&
+      elbowKp &&
+      hipKp.confidence > 0.1 &&
+      shoulderKp.confidence > 0.1 &&
+      elbowKp.confidence > 0.1 &&
+      sideKeypoints[currentSide].includes(hipKp.name) &&
+      sideKeypoints[currentSide].includes(shoulderKp.name) &&
+      sideKeypoints[currentSide].includes(elbowKp.name)
+    ) {
+      let angle = angleBetweenThreePoints(hipKp, shoulderKp, elbowKp);
+      drawAngleArc(hipKp, shoulderKp, elbowKp, angle);
     }
   }
 }
