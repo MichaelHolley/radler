@@ -94,9 +94,11 @@ function draw() {
     }
   }
 
-  // Draw all the tracked landmark points
+  // Draw all the tracked landmark points and the head keypoint
   for (let i = 0; i < poses.length; i++) {
     let pose = poses[i];
+
+    // Draw side-specific keypoints
     for (let j = 0; j < pose.keypoints.length; j++) {
       let keypoint = pose.keypoints[j];
 
@@ -110,6 +112,14 @@ function draw() {
         noStroke();
         circle(keypoint.x, keypoint.y, 10);
       }
+    }
+
+    // Draw the head keypoint (nose)
+    let noseKeypoint = pose.keypoints.find((kp) => kp.name === "nose");
+    if (noseKeypoint && noseKeypoint.confidence > 0.1) {
+      fill(0, 255, 0); // Green color for head
+      noStroke();
+      circle(noseKeypoint.x, noseKeypoint.y, 15); // Slightly larger circle for head
     }
   }
 }
