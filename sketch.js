@@ -58,7 +58,7 @@ function angleBetweenThreePoints(p1, p2, p3) {
   const v2 = p5.Vector.sub(createVector(p3.x, p3.y), createVector(p2.x, p2.y));
   let angle = v1.angleBetween(v2);
   angle = degrees(angle); // Convert to degrees
-  return angle;
+  return abs(angle);
 }
 
 // Helper function to draw an arc for the angle
@@ -93,7 +93,7 @@ function drawAngleArc(p1, p2, p3, angle) {
   fill(255, 255, 255); // White color for text
   noStroke();
   textSize(16);
-  text(nf(angle, 0, 1) + "°", p2.x + 30, p2.y);
+  text(int(angle) + "°", p2.x + 30, p2.y);
 }
 
 function draw() {
