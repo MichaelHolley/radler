@@ -4,6 +4,7 @@ let poses = [];
 let connections;
 
 let currentSide = "left"; // 'left' or 'right'
+let mirrored = true;
 const sideKeypoints = {
   left: [
     "left_shoulder",
@@ -45,6 +46,11 @@ function setup() {
   let toggleButton = createButton("Toggle Side");
   toggleButton.position(10, 10); // Adjust position as needed
   toggleButton.mousePressed(toggleSide);
+
+  // Create a button to toggle mirror
+  let mirrorButton = createButton("Mirror");
+  mirrorButton.position(110, 10);
+  mirrorButton.mousePressed(toggleMirror);
 }
 
 function toggleSide() {
@@ -52,10 +58,20 @@ function toggleSide() {
   console.log("Current side:", currentSide);
 }
 
+function toggleMirror() {
+  mirrored = !mirrored;
+  console.log("Mirrored:", mirrored);
+}
+
+// Returns the x coordinate, flipped if mirrored
+function mx(x) {
+  return mirrored ? width - x : x;
+}
+
 // Helper function to calculate angle between three points (p1-p2-p3)
 function angleBetweenThreePoints(p1, p2, p3) {
-  const v1 = p5.Vector.sub(createVector(p1.x, p1.y), createVector(p2.x, p2.y));
-  const v2 = p5.Vector.sub(createVector(p3.x, p3.y), createVector(p2.x, p2.y));
+  const v1 = p5.Vector.sub(createVector(mx(p1.x), p1.y), createVector(mx(p2.x), p2.y));
+  const v2 = p5.Vector.sub(createVector(mx(p3.x), p3.y), createVector(mx(p2.x), p2.y));
   let angle = v1.angleBetween(v2);
   angle = degrees(angle); // Convert to degrees
   return abs(angle);
@@ -63,8 +79,8 @@ function angleBetweenThreePoints(p1, p2, p3) {
 
 // Helper function to draw an arc for the angle
 function drawAngleArc(p1, p2, p3, angle) {
-  let v1 = p5.Vector.sub(createVector(p1.x, p1.y), createVector(p2.x, p2.y));
-  let v2 = p5.Vector.sub(createVector(p3.x, p3.y), createVector(p2.x, p2.y));
+  let v1 = p5.Vector.sub(createVector(mx(p1.x), p1.y), createVector(mx(p2.x), p2.y));
+  let v2 = p5.Vector.sub(createVector(mx(p3.x), p3.y), createVector(mx(p2.x), p2.y));
 
   let startAngle = v1.heading();
   let endAngle = v2.heading();
@@ -82,10 +98,10 @@ function drawAngleArc(p1, p2, p3, angle) {
 
   if (crossProductZ < 0) {
     // v2 is clockwise from v1
-    arc(p2.x, p2.y, 50, 50, endAngle, startAngle); // Swap to draw clockwise
+    arc(mx(p2.x), p2.y, 50, 50, endAngle, startAngle); // Swap to draw clockwise
   } else {
     // v2 is counter-clockwise from v1
-    arc(p2.x, p2.y, 50, 50, startAngle, endAngle);
+    arc(mx(p2.x), p2.y, 50, 50, startAngle, endAngle);
   }
   pop();
 
@@ -93,12 +109,18 @@ function drawAngleArc(p1, p2, p3, angle) {
   fill(255, 255, 255); // White color for text
   noStroke();
   textSize(16);
-  text(int(angle) + "°", p2.x + 30, p2.y);
+  text(int(angle) + "°", mx(p2.x) + 30, p2.y);
 }
 
 function draw() {
-  // Draw the webcam video
+  // Draw the webcam video (mirrored if enabled)
+  push();
+  if (mirrored) {
+    translate(width, 0);
+    scale(-1, 1);
+  }
   image(video, 0, 0, width, height);
+  pop();
 
   // Draw the skeleton connections
   for (let i = 0; i < poses.length; i++) {
@@ -125,7 +147,7 @@ function draw() {
       ) {
         stroke(255, 0, 0);
         strokeWeight(2);
-        line(pointA.x, pointA.y, pointB.x, pointB.y);
+        line(mx(pointA.x), pointA.y, mx(pointB.x), pointB.y);
       }
     }
   }
@@ -146,7 +168,7 @@ function draw() {
       if (keypoint.confidence > 0.1 && isKeypointOnCurrentSide) {
         fill(0, 255, 0);
         noStroke();
-        circle(keypoint.x, keypoint.y, 10);
+        circle(mx(keypoint.x), keypoint.y, 10);
       }
     }
 
@@ -155,7 +177,7 @@ function draw() {
     if (noseKeypoint && noseKeypoint.confidence > 0.1) {
       fill(0, 255, 0); // Green color for head
       noStroke();
-      circle(noseKeypoint.x, noseKeypoint.y, 15); // Slightly larger circle for head
+      circle(mx(noseKeypoint.x), noseKeypoint.y, 15); // Slightly larger circle for head
     }
 
     // --- Draw Angles ---
