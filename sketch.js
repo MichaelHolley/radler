@@ -3,8 +3,17 @@ let bodyPose;
 let poses = [];
 let connections;
 
-let currentSide = "left"; // 'left' or 'right'
+let currentSide = "left";
 let mirrored = true;
+let mode = null; // 'webcam' or 'video'
+let videoLoaded = false;
+let videoPaused = false;
+let scaleX = 1;
+let scaleY = 1;
+
+let modeWebcamBtn, modeVideoBtn;
+let toggleBtn, mirrorBtn, pausePlayBtn, fileInputBtn;
+
 const sideKeypoints = {
   left: [
     "left_shoulder",
@@ -25,95 +34,186 @@ const sideKeypoints = {
 };
 
 function preload() {
-  // Load the bodyPose model
   bodyPose = ml5.bodyPose();
 }
 
 function setup() {
   createCanvas(960, 720);
-
-  // Create the video and hide it
-  video = createCapture(VIDEO);
-  video.size(960, 720);
-  video.hide();
-
-  // Start detecting poses in the webcam video
-  bodyPose.detectStart(video, gotPoses);
-  // Get the skeletal connection information
   connections = bodyPose.getConnections();
 
-  // Create a button to toggle the side
-  let toggleButton = createButton("Toggle Side");
-  toggleButton.position(10, 10); // Adjust position as needed
-  toggleButton.mousePressed(toggleSide);
+  modeWebcamBtn = createButton("Webcam");
+  modeWebcamBtn.position(width / 2 - 85, height / 2);
+  modeWebcamBtn.size(80, 40);
+  modeWebcamBtn.mousePressed(() => initMode("webcam"));
 
-  // Create a button to toggle mirror
-  let mirrorButton = createButton("Mirror");
-  mirrorButton.position(110, 10);
-  mirrorButton.mousePressed(toggleMirror);
+  modeVideoBtn = createButton("Video File");
+  modeVideoBtn.position(width / 2 + 5, height / 2);
+  modeVideoBtn.size(80, 40);
+  modeVideoBtn.mousePressed(() => initMode("video"));
+}
+
+function initMode(selectedMode) {
+  mode = selectedMode;
+  modeWebcamBtn.remove();
+  modeVideoBtn.remove();
+
+  toggleBtn = createButton("Toggle Side");
+  toggleBtn.position(10, 10);
+  toggleBtn.mousePressed(toggleSide);
+
+  mirrorBtn = createButton("Mirror");
+  mirrorBtn.position(110, 10);
+  mirrorBtn.mousePressed(toggleMirror);
+
+  if (mode === "webcam") {
+    scaleX = 1;
+    scaleY = 1;
+    video = createCapture(VIDEO);
+    video.size(960, 720);
+    video.hide();
+    bodyPose.detectStart(video, gotPoses);
+    videoLoaded = true;
+  } else {
+    fileInputBtn = createFileInput(handleFileSelect);
+    fileInputBtn.position(210, 10);
+
+    let canvas = select("canvas").elt;
+    canvas.addEventListener("dragover", (e) => e.preventDefault());
+    canvas.addEventListener("drop", (e) => {
+      e.preventDefault();
+      let file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith("video/")) loadVideoFile(file);
+    });
+  }
+}
+
+function handleFileSelect(p5File) {
+  if (p5File.type === "video") {
+    loadVideoFile(p5File.file);
+  }
+}
+
+function loadVideoFile(nativeFile) {
+  if (video) {
+    video.stop();
+    video.remove();
+    poses = [];
+  }
+  let url = URL.createObjectURL(nativeFile);
+  video = createVideo(url);
+  video.elt.muted = true;
+  video.elt.loop = true;
+  video.hide();
+
+  video.elt.addEventListener("playing", () => {
+    scaleX = width / video.elt.videoWidth;
+    scaleY = height / video.elt.videoHeight;
+    bodyPose.detectStart(video, gotPoses);
+    videoLoaded = true;
+    videoPaused = false;
+
+    if (fileInputBtn) {
+      fileInputBtn.remove();
+      fileInputBtn = null;
+    }
+    if (!pausePlayBtn) {
+      pausePlayBtn = createButton("Pause");
+      pausePlayBtn.position(210, 10);
+      pausePlayBtn.mousePressed(togglePause);
+    } else {
+      pausePlayBtn.html("Pause");
+    }
+  }, { once: true });
+
+  video.play();
+}
+
+function togglePause() {
+  videoPaused = !videoPaused;
+  if (videoPaused) {
+    video.pause();
+    pausePlayBtn.html("Play");
+  } else {
+    video.play();
+    pausePlayBtn.html("Pause");
+  }
 }
 
 function toggleSide() {
   currentSide = currentSide === "left" ? "right" : "left";
-  console.log("Current side:", currentSide);
 }
 
 function toggleMirror() {
   mirrored = !mirrored;
-  console.log("Mirrored:", mirrored);
 }
 
-// Returns the x coordinate, flipped if mirrored
 function mx(x) {
-  return mirrored ? width - x : x;
+  let sx = x * scaleX;
+  return mirrored ? width - sx : sx;
 }
 
-// Helper function to calculate angle between three points (p1-p2-p3)
+function sy(y) {
+  return y * scaleY;
+}
+
 function angleBetweenThreePoints(p1, p2, p3) {
-  const v1 = p5.Vector.sub(createVector(mx(p1.x), p1.y), createVector(mx(p2.x), p2.y));
-  const v2 = p5.Vector.sub(createVector(mx(p3.x), p3.y), createVector(mx(p2.x), p2.y));
+  const v1 = p5.Vector.sub(createVector(mx(p1.x), sy(p1.y)), createVector(mx(p2.x), sy(p2.y)));
+  const v2 = p5.Vector.sub(createVector(mx(p3.x), sy(p3.y)), createVector(mx(p2.x), sy(p2.y)));
   let angle = v1.angleBetween(v2);
-  angle = degrees(angle); // Convert to degrees
+  angle = degrees(angle);
   return abs(angle);
 }
 
-// Helper function to draw an arc for the angle
 function drawAngleArc(p1, p2, p3, angle) {
-  let v1 = p5.Vector.sub(createVector(mx(p1.x), p1.y), createVector(mx(p2.x), p2.y));
-  let v2 = p5.Vector.sub(createVector(mx(p3.x), p3.y), createVector(mx(p2.x), p2.y));
+  let v1 = p5.Vector.sub(createVector(mx(p1.x), sy(p1.y)), createVector(mx(p2.x), sy(p2.y)));
+  let v2 = p5.Vector.sub(createVector(mx(p3.x), sy(p3.y)), createVector(mx(p2.x), sy(p2.y)));
 
   let startAngle = v1.heading();
   let endAngle = v2.heading();
 
-  // Determine if the arc should be drawn clockwise or counter-clockwise
-  // based on the cross product of v1 and v2.
-  // A positive z-component means v2 is counter-clockwise from v1.
-  // A negative z-component means v2 is clockwise from v1.
   let crossProductZ = v1.x * v2.y - v1.y * v2.x;
 
   push();
   noFill();
-  stroke(255, 255, 255); // White color for angle arc
+  stroke(255, 255, 255);
   strokeWeight(2);
 
   if (crossProductZ < 0) {
-    // v2 is clockwise from v1
-    arc(mx(p2.x), p2.y, 50, 50, endAngle, startAngle); // Swap to draw clockwise
+    arc(mx(p2.x), sy(p2.y), 50, 50, endAngle, startAngle);
   } else {
-    // v2 is counter-clockwise from v1
-    arc(mx(p2.x), p2.y, 50, 50, startAngle, endAngle);
+    arc(mx(p2.x), sy(p2.y), 50, 50, startAngle, endAngle);
   }
   pop();
 
-  // Display the angle value
-  fill(255, 255, 255); // White color for text
+  fill(255, 255, 255);
   noStroke();
   textSize(16);
-  text(int(angle) + "°", mx(p2.x) + 30, p2.y);
+  text(int(angle) + "°", mx(p2.x) + 30, sy(p2.y));
 }
 
 function draw() {
-  // Draw the webcam video (mirrored if enabled)
+  if (mode === null) {
+    background(30);
+    fill(255);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(28);
+    text("Select Input Source", width / 2, height / 2 - 50);
+    textAlign(LEFT, BASELINE);
+    return;
+  }
+
+  if (!videoLoaded) {
+    background(30);
+    fill(255);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(20);
+    text("Select a video file or drag & drop onto canvas", width / 2, height / 2);
+    textAlign(LEFT, BASELINE);
+    return;
+  }
+
   push();
   if (mirrored) {
     translate(width, 0);
@@ -122,7 +222,6 @@ function draw() {
   image(video, 0, 0, width, height);
   pop();
 
-  // Draw the skeleton connections
   for (let i = 0; i < poses.length; i++) {
     let pose = poses[i];
     for (let j = 0; j < connections.length; j++) {
@@ -131,13 +230,8 @@ function draw() {
       let pointA = pose.keypoints[pointAIndex];
       let pointB = pose.keypoints[pointBIndex];
 
-      // Check if both points are confident enough and on the current side
-      const isPointAOnCurrentSide = sideKeypoints[currentSide].includes(
-        pointA.name
-      );
-      const isPointBOnCurrentSide = sideKeypoints[currentSide].includes(
-        pointB.name
-      );
+      const isPointAOnCurrentSide = sideKeypoints[currentSide].includes(pointA.name);
+      const isPointBOnCurrentSide = sideKeypoints[currentSide].includes(pointB.name);
 
       if (
         pointA.confidence > 0.1 &&
@@ -147,51 +241,40 @@ function draw() {
       ) {
         stroke(255, 0, 0);
         strokeWeight(2);
-        line(mx(pointA.x), pointA.y, mx(pointB.x), pointB.y);
+        line(mx(pointA.x), sy(pointA.y), mx(pointB.x), sy(pointB.y));
       }
     }
   }
 
-  // Draw all the tracked landmark points and the head keypoint
   for (let i = 0; i < poses.length; i++) {
     let pose = poses[i];
 
-    // Draw side-specific keypoints
     for (let j = 0; j < pose.keypoints.length; j++) {
       let keypoint = pose.keypoints[j];
-
-      // Check if the keypoint's confidence is bigger than 0.1 and on the current side
-      const isKeypointOnCurrentSide = sideKeypoints[currentSide].includes(
-        keypoint.name
-      );
+      const isKeypointOnCurrentSide = sideKeypoints[currentSide].includes(keypoint.name);
 
       if (keypoint.confidence > 0.1 && isKeypointOnCurrentSide) {
         fill(0, 255, 0);
         noStroke();
-        circle(mx(keypoint.x), keypoint.y, 10);
+        circle(mx(keypoint.x), sy(keypoint.y), 10);
       }
     }
 
-    // Draw the head keypoint (nose)
     let noseKeypoint = pose.keypoints.find((kp) => kp.name === "nose");
     if (noseKeypoint && noseKeypoint.confidence > 0.1) {
-      fill(0, 255, 0); // Green color for head
+      fill(0, 255, 0);
       noStroke();
-      circle(mx(noseKeypoint.x), noseKeypoint.y, 15); // Slightly larger circle for head
+      circle(mx(noseKeypoint.x), sy(noseKeypoint.y), 15);
     }
 
-    // --- Draw Angles ---
     const getKp = (name) => pose.keypoints.find((kp) => kp.name === name);
 
-    // Elbow (inside): shoulder - elbow - wrist
     let shoulderKp = getKp(`${currentSide}_shoulder`);
     let elbowKp = getKp(`${currentSide}_elbow`);
     let wristKp = getKp(`${currentSide}_wrist`);
 
     if (
-      shoulderKp &&
-      elbowKp &&
-      wristKp &&
+      shoulderKp && elbowKp && wristKp &&
       shoulderKp.confidence > 0.1 &&
       elbowKp.confidence > 0.1 &&
       wristKp.confidence > 0.1 &&
@@ -203,15 +286,12 @@ function draw() {
       drawAngleArc(shoulderKp, elbowKp, wristKp, angle);
     }
 
-    // Knee (back): hip - knee - ankle
     let hipKp = getKp(`${currentSide}_hip`);
     let kneeKp = getKp(`${currentSide}_knee`);
     let ankleKp = getKp(`${currentSide}_ankle`);
 
     if (
-      hipKp &&
-      kneeKp &&
-      ankleKp &&
+      hipKp && kneeKp && ankleKp &&
       hipKp.confidence > 0.1 &&
       kneeKp.confidence > 0.1 &&
       ankleKp.confidence > 0.1 &&
@@ -223,12 +303,8 @@ function draw() {
       drawAngleArc(hipKp, kneeKp, ankleKp, angle);
     }
 
-    // Hip (front): shoulder - hip - knee
-    // This assumes the angle at the hip formed by shoulder, hip, and knee
     if (
-      shoulderKp &&
-      hipKp &&
-      kneeKp &&
+      shoulderKp && hipKp && kneeKp &&
       shoulderKp.confidence > 0.1 &&
       hipKp.confidence > 0.1 &&
       kneeKp.confidence > 0.1 &&
@@ -240,12 +316,8 @@ function draw() {
       drawAngleArc(shoulderKp, hipKp, kneeKp, angle);
     }
 
-    // Armpit (inside): hip - shoulder - elbow
-    // This measures the angle between the torso and the upper arm
     if (
-      hipKp &&
-      shoulderKp &&
-      elbowKp &&
+      hipKp && shoulderKp && elbowKp &&
       hipKp.confidence > 0.1 &&
       shoulderKp.confidence > 0.1 &&
       elbowKp.confidence > 0.1 &&
@@ -259,8 +331,6 @@ function draw() {
   }
 }
 
-// Callback function for when bodyPose outputs data
 function gotPoses(results) {
-  // Save the output to the poses variable
   poses = results;
 }
